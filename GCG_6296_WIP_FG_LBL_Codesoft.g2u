@@ -1,0 +1,93 @@
+﻿Program.Sub.Preflight.Start
+V.Global.iBIRunID.Declare
+V.Global.iBILogID.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+'JFW, March 2021
+'Customer: NORSTAR
+'BUSINESS CASE: The company needs different labels to print at WIP to FG based on the Product Line.
+'Forked from 5908
+'Program should be run from hook 16090
+V.Local.sSQL.Declare
+V.Local.iReportID.Declare
+
+'Determining if this was called from WIP-To-FG
+F.Intrinsic.Control.If(V.Passed.CALLING-PGM,<>,"PUR109")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+V.Global.iBIRunID.Set(V.Passed.BIP_BIRUNID.Long)
+V.Global.iBILogID.Set(V.Passed.BIP_LOGID.Long)
+
+F.ODBC.Connection!conts.OpenCompanyConnection
+F.Intrinsic.String.Build("select * from Y_SF_WIPTOFG where RUNID = '{0}' and LOGID = '{1}'",V.Global.iBIRunID,V.Global.iBILogID,V.Local.sSQL)
+F.Data.DataTable.CreateFromSQL("dtTransfer","conts",V.Local.sSQL,True)
+
+'Customer only wants this label to print if the PL = "60" or "70"
+F.Intrinsic.Control.If(V.DataTable.dtTransfer(0).PROD_LINE!FieldValTrim,<>,"60")
+	F.Intrinsic.Control.If(V.DataTable.dtTransfer(0).PROD_LINE!FieldValTrim,<>,"70")
+		F.Intrinsic.Control.CallSub(Exit)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+
+'If the PL is correct, the original process is cancelled 
+V.Passed.CANCEL.Set(1)
+
+F.Global.BI.GetIDFromName("SF_WIP_FG_1835_YardLabel.lab",V.Local.iReportID)
+
+F.Global.BI.GetRunID(V.Global.iBIRunID)
+
+F.Global.BI.StartLogging(V.Global.iBIRunID,V.Local.iReportID,-1,"",V.Global.iBILogID)
+
+'Modifying datatable to match Z-table
+F.Data.DataTable.AddExpressionColumn("dtTransfer","BIRUNID","Long",V.Global.iBIRunID)
+F.Data.DataTable.RemoveColumn("dtTransfer","RUNID")
+F.Data.DataTable.RemoveColumn("dtTransfer","LOGID")
+F.Data.DataTable.RemoveColumn("dtTransfer","LBL_CREATE_TIME")
+F.Data.DataTable.RemoveColumn("dtTransfer","FILLER")
+
+F.Data.DataTable.SaveToDB("dtTransfer","conts","Z_SF_WIPTOFG","BIRUNID",128)
+
+F.ODBC.Connection!conts.Close
+
+F.Intrinsic.Control.CallSub(LaunchBI)
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error,"SubRoutine",V.Ambient.CurrentSubroutine,"eNumber",V.Ambient.ErrorNumber,"eDescription",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.LaunchBI.Start
+F.Intrinsic.Control.Try
+V.Local.iRet.Declare
+
+F.Global.BI.StopLogging(V.Global.iBILogID)
+
+F.Global.BI.RunReportPreProcessor(V.Global.iBIRunID,V.Global.iBILogID,"","","",-1,True,"",-1,"",-1,"","",V.Local.iRet)
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error,"SubRoutine",V.Ambient.CurrentSubroutine,"eNumber",V.Ambient.ErrorNumber,"eDescription",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+Program.Sub.LaunchBI.End
+
+Program.Sub.Exit.Start
+F.Data.DataTable.Close("dtTransfer")
+F.Intrinsic.Control.End
+Program.Sub.Exit.End
+
+Program.Sub.Error.Start
+V.Local.sError.Declare
+V.Local.iRet.Declare
+V.Local.sSep.Declare
+
+F.Intrinsic.String.Build("-------------------------------------------------------------------------------------",,V.Local.sSep)
+F.Intrinsic.String.Build("({5}-{6}){0}{7}{0}Project: {4}{0}{7}{0}Sub: {1}{0}Error: {2}, {3}", V.Ambient.NewLine, V.Args.SubRoutine, V.Args.eNumber, V.Args.eDescription,V.Caller.ScriptFile,V.Ambient.Date, V.Ambient.Time,V.Local.sSep,V.Local.sError)
+F.Intrinsic.UI.Msgbox(V.Local.sError,"Error",V.Local.iRet)
+Program.Sub.Error.End
+
+Program.Sub.Comments.Start
+${$5$}$2.0.0.0$}$2
+${$6$}$jwithrow$}$20210304100951384$}$D95tSYIikIvF+oq+s87EtBQePACEH+Ey6SCW/w8nJj40W9KdUAw9VpvQeFRbBfS0OolMNZ1chAfjllhkgVMBtA==
+Program.Sub.Comments.End
